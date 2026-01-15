@@ -7,6 +7,7 @@ use crate::condition::Condition;
 use crate::error::PolicyError;
 use crate::target::Target;
 use crate::types::{Decision, Effect, ReasonCode, Request, NO_MATCHING_RULE};
+use crate::value::Value;
 
 /// Configuration limits for policy construction and evaluation.
 #[derive(Debug, Clone, Copy)]
@@ -139,12 +140,25 @@ impl<'a> Policy<'a> {
     /// 5. Else if any Allow exists → return first Allow's reason
     /// 6. Else → Deny with NO_MATCHING_RULE
     pub fn evaluate(&self, request: &Request<'_>) -> Result<Decision, PolicyError> {
-        // Validate context size
+        // 1. Validate request string lengths
+        validate_str(request.principal, self.config.max_string_len)?;
+        validate_str(request.action, self.config.max_string_len)?;
+        validate_str(request.resource, self.config.max_string_len)?;
+
+        // 2. Validate context size
         if request.context.len() > self.config.max_context_attrs {
             return Err(PolicyError::ContextTooLarge {
                 max: self.config.max_context_attrs,
                 actual: request.context.len(),
             });
+        }
+
+        // 3. Validate context key/value lengths
+        for (key, value) in request.context {
+            validate_str(key, self.config.max_string_len)?;
+            if let Value::String(s) = value {
+                validate_str(s, self.config.max_string_len)?;
+            }
         }
 
         let mut first_allow: Option<ReasonCode> = None;
@@ -181,7 +195,6 @@ impl<'a> Policy<'a> {
                 }
             }
         }
-
         // Apply deny-overrides: Deny wins if any Deny matched
         if let Some(reason) = first_deny {
             Ok(Decision::deny(reason))
@@ -191,6 +204,18 @@ impl<'a> Policy<'a> {
             // No matching rules - default deny
             Ok(Decision::deny(NO_MATCHING_RULE))
         }
+    }
+}
+
+/// Validate that a string does not exceed the maximum allowed length.
+fn validate_str(s: &str, max_len: usize) -> Result<(), PolicyError> {
+    if s.len() > max_len {
+        Err(PolicyError::StringTooLong {
+            max: max_len,
+            actual: s.len(),
+        })
+    } else {
+        Ok(())
     }
 }
 
@@ -553,5 +578,32 @@ mod tests {
             let result = policy.evaluate(&request).unwrap();
             assert_eq!(result, expected);
         }
+    }
+
+    #[test]
+    fn test_hostile_request_string_too_long() {
+        let config = PolicyConfig {
+            max_string_len: 10,
+            ..PolicyConfig::default()
+        };
+        let policy = Policy::with_config(vec![Rule::allow(Target::any(), ReasonCode(1))], config).unwrap();
+
+        // 1. Principal too long
+        let req = Request::new("this-is-a-very-long-principal", "read", "doc");
+        assert!(matches!(policy.evaluate(&req), Err(PolicyError::StringTooLong { max: 10, .. })));
+
+        // 2. Action too long
+        let req = Request::new("alice", "very-long-action-name", "doc");
+        assert!(matches!(policy.evaluate(&req), Err(PolicyError::StringTooLong { max: 10, .. })));
+
+        // 3. Context key too long
+        let ctx: &[(&str, Value)] = &[("this-is-a-very-long-key", Value::Int(1))];
+        let req = Request::with_context("alice", "read", "doc", ctx);
+        assert!(matches!(policy.evaluate(&req), Err(PolicyError::StringTooLong { max: 10, .. })));
+
+        // 4. Context value too long
+        let ctx: &[(&str, Value)] = &[("role", Value::String("administrator"))];
+        let req = Request::with_context("alice", "read", "doc", ctx);
+        assert!(matches!(policy.evaluate(&req), Err(PolicyError::StringTooLong { max: 10, .. })));
     }
 }
