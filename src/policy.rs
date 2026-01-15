@@ -13,10 +13,12 @@ use crate::types::{Decision, Effect, ReasonCode, Request, NO_MATCHING_RULE};
 pub struct PolicyConfig {
     /// Maximum number of rules allowed in a policy.
     pub max_rules: usize,
-    /// Maximum depth of condition expressions.
+    /// Maximum depth of nested conditions (default: 10).
     pub max_condition_depth: usize,
-    /// Maximum number of context attributes in a request.
+    /// Maximum number of attributes allowed in request context (default: 64).
     pub max_context_attrs: usize,
+    /// Maximum number of items in a Matcher::OneOf list (default: 64).
+    pub max_matcher_options: usize,
 }
 
 impl Default for PolicyConfig {
@@ -25,6 +27,7 @@ impl Default for PolicyConfig {
             max_rules: 1000,
             max_condition_depth: 10,
             max_context_attrs: 64,
+            max_matcher_options: 64,
         }
     }
 }
@@ -99,9 +102,15 @@ impl<'a> Policy<'a> {
 
         // Validate condition depths
         for rule in &rules {
-            if let Some(ref cond) = rule.condition {
+            // Validate condition depth
+            if let Some(cond) = &rule.condition {
                 cond.validate_depth(config.max_condition_depth)?;
             }
+
+            // Validate matcher options (enforce bounds on Matcher::OneOf)
+            rule.target.principal.validate_options(config.max_matcher_options)?;
+            rule.target.action.validate_options(config.max_matcher_options)?;
+            rule.target.resource.validate_options(config.max_matcher_options)?;
         }
 
         Ok(Policy { rules, config })
@@ -369,6 +378,27 @@ mod tests {
         let request = Request::with_context("alice", "read", "doc", ctx);
         let decision = policy.evaluate(&request).unwrap();
         assert!(decision.is_deny());
+    }
+
+    #[test]
+    fn test_too_many_matcher_options() {
+        let config = PolicyConfig {
+            max_matcher_options: 2,
+            ..PolicyConfig::default()
+        };
+        
+        let target = Target {
+            principal: Matcher::OneOf(&["a", "b", "c"]),
+            action: Matcher::Any,
+            resource: Matcher::Any,
+        };
+        
+        let rule = Rule::allow(target, ReasonCode(1));
+        let result = Policy::with_config(vec![rule], config);
+        
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, PolicyError::TooManyMatcherOptions { max: 2, actual: 3 }));
     }
 
     #[test]

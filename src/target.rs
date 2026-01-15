@@ -1,8 +1,6 @@
-//! Target matching for policy rules.
-//!
-//! Matchers determine whether a rule applies to a given request.
-//! Only three matcher types: Any, Exact, OneOf.
 //! No Prefix matcher - intentionally omitted to avoid footguns.
+
+use crate::error::PolicyError;
 
 /// A target specifies which requests a rule applies to.
 #[derive(Debug, Clone, PartialEq)]
@@ -52,6 +50,19 @@ impl<'a> Matcher<'a> {
             Matcher::Exact(expected) => value == *expected,
             Matcher::OneOf(options) => options.iter().any(|opt| *opt == value),
         }
+    }
+
+    /// Validate that this matcher does not exceed the maximum options.
+    pub fn validate_options(&self, max_options: usize) -> Result<(), PolicyError> {
+        if let Matcher::OneOf(options) = self {
+            if options.len() > max_options {
+                return Err(PolicyError::TooManyMatcherOptions {
+                    max: max_options,
+                    actual: options.len(),
+                });
+            }
+        }
+        Ok(())
     }
 }
 
@@ -128,5 +139,18 @@ mod tests {
         assert!(t.matches("service-account", "invoke", "api/v1/health"));
         assert!(!t.matches("service-account", "invoke", "api/v1/status"));
         assert!(!t.matches("user", "invoke", "api/v1/health"));
+    }
+
+    #[test]
+    fn test_matcher_too_many_options() {
+        let options = vec!["a", "b", "c"];
+        let m = Matcher::OneOf(&options);
+        
+        // Ok if within limit
+        assert!(m.validate_options(3).is_ok());
+        
+        // Err if over limit
+        let err = m.validate_options(2).unwrap_err();
+        assert!(matches!(err, PolicyError::TooManyMatcherOptions { max: 2, actual: 3 }));
     }
 }

@@ -48,6 +48,14 @@ pub enum PolicyError {
         actual: &'static str,
     },
 
+    /// A matcher (OneOf) contains too many options.
+    TooManyMatcherOptions {
+        /// The configured maximum number of options.
+        max: usize,
+        /// The actual number of options.
+        actual: usize,
+    },
+
     /// Internal invariant violation. Should never occur in correct usage.
     InternalError,
 }
@@ -88,6 +96,13 @@ impl fmt::Display for PolicyError {
                     f,
                     "type mismatch for '{}': expected {}, got {}",
                     attr, expected, actual
+                )
+            }
+            PolicyError::TooManyMatcherOptions { max, actual } => {
+                write!(
+                    f,
+                    "matcher exceeds maximum options of {}, got {}",
+                    max, actual
                 )
             }
             PolicyError::InternalError => {

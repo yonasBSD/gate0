@@ -188,6 +188,7 @@ proptest! {
             max_rules: 1000,
             max_condition_depth: 3, // Intentionally low to trigger rejection
             max_context_attrs: 64,
+            max_matcher_options: 64,
         };
         
         let rule = Rule::new(
@@ -214,6 +215,7 @@ proptest! {
             max_rules: 30,
             max_condition_depth: 10,
             max_context_attrs: 64,
+            max_matcher_options: 64,
         };
         
         let rules: Vec<Rule> = (0..rule_count)
@@ -241,6 +243,7 @@ fn test_worst_case_policy() {
         max_rules: 1000,
         max_condition_depth: 10,
         max_context_attrs: 64,
+        max_matcher_options: 64,
     };
 
     // Create a policy with maximum rules
@@ -298,6 +301,7 @@ fn test_context_too_large() {
         max_rules: 1000,
         max_condition_depth: 10,
         max_context_attrs: 5, // Very small limit
+        max_matcher_options: 64,
     };
     
     let policy = Policy::with_config(

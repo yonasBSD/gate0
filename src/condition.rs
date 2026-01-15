@@ -40,15 +40,47 @@ impl<'a> Condition<'a> {
     /// Compute the depth of this condition tree.
     ///
     /// Used to enforce bounded complexity at construction time.
+    /// This implementation is non-recursive to prevent stack overflows
+    /// on unvalidated or extremely deep trees.
     pub fn depth(&self) -> usize {
-        match self {
-            Condition::True | Condition::False => 1,
-            Condition::Equals { .. } | Condition::NotEquals { .. } => 1,
-            Condition::And(a, b) | Condition::Or(a, b) => {
-                1 + a.depth().max(b.depth())
-            }
-            Condition::Not(inner) => 1 + inner.depth(),
+        enum DepthItem<'a, 'b> {
+            Visit(&'b Condition<'a>),
+            Computed(usize),
         }
+
+        let mut stack = vec![DepthItem::Visit(self)];
+        let mut results = Vec::with_capacity(8);
+
+        while let Some(item) = stack.pop() {
+            match item {
+                DepthItem::Visit(cond) => match cond {
+                    Condition::True | Condition::False | Condition::Equals { .. } | Condition::NotEquals { .. } => {
+                        results.push(1);
+                    }
+                    Condition::Not(inner) => {
+                        stack.push(DepthItem::Computed(1));
+                        stack.push(DepthItem::Visit(inner));
+                    }
+                    Condition::And(a, b) | Condition::Or(a, b) => {
+                        stack.push(DepthItem::Computed(2));
+                        stack.push(DepthItem::Visit(b));
+                        stack.push(DepthItem::Visit(a));
+                    }
+                },
+                DepthItem::Computed(count) => {
+                    if count == 1 {
+                        let d = results.pop().unwrap_or(0);
+                        results.push(1 + d);
+                    } else {
+                        let d2 = results.pop().unwrap_or(0);
+                        let d1 = results.pop().unwrap_or(0);
+                        results.push(1 + d1.max(d2));
+                    }
+                }
+            }
+        }
+
+        results.pop().unwrap_or(0)
     }
 
     /// Validate that this condition does not exceed the maximum depth.
@@ -82,6 +114,8 @@ impl<'a> Condition<'a> {
         }
 
         let mut stack: Vec<StackItem<'a, '_>> = vec![StackItem::Eval(self)];
+        // Pre-allocate results stack to avoid mid-evaluation allocations.
+        // Capacity is small because depth is strictly bounded at construction.
         let mut results: Vec<bool> = Vec::with_capacity(16);
 
         while let Some(item) = stack.pop() {
