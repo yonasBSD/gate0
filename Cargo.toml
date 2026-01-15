@@ -13,7 +13,7 @@ categories = ["authentication"]
 # Zero dependencies. Intentional.
 
 [dev-dependencies]
-# None.
+proptest = "1.4"
 
 [lib]
 name = "gate0"

@@ -1,0 +1,26 @@
+# Proptest configuration for Gate0
+# 
+# Property-based testing is intentionally bounded to prevent resource 
+# exhaustion during local runs. These conservative defaults ensure:
+# - Tests complete quickly on developer machines
+# - No memory exhaustion from input generation
+# - Reproducible failures via persistent regression files
+
+# Number of test cases per property (default: 256)
+# We use a conservative value for local development.
+# CI can override with PROPTEST_CASES=100
+cases = 25
+
+# Maximum shrink iterations (default: 4294967295)
+# Keep reasonably low to avoid long shrinking on complex inputs
+max_shrink_iters = 1000
+
+# Timeout per test case in milliseconds (0 = no timeout)
+# 10 seconds is generous for any single evaluation
+timeout = 10000
+
+# Fail fast on first failure
+fork = false
+
+# Store failure cases for regression testing
+failure_persistence = "proptest-regressions"

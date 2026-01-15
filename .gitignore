@@ -3,3 +3,6 @@
 
 # Cargo.lock for library crates
 Cargo.lock
+
+# Proptest failure regressions
+proptest-regressions/
