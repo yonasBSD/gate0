@@ -43,17 +43,27 @@ graph TD
 
 ## Verification
 
-The correctness and safety of Gate0 are mechanically verified:
-
-- **Unit Tests**: Full coverage of core logic and edge cases.
-- **Property-Based Testing**: Hundreds of adversarial scenarios generated via `proptest`.
-- **Undefined Behavior Check**: Verified panic-free and UB-free using `cargo miri`.
-- **Bounded Evaluation**: Worst-case inputs are tested to ensure termination.
+The correctness and safety of Gate0 are mechanically verified through unit tests covering core logic and edge cases, property-based testing via proptest with hundreds of generated scenarios, and MIRI verification for panic-free and UB-free operation. Worst-case inputs are tested to ensure bounded termination.
 
 ```bash
 cargo test
 cargo +nightly miri test --lib
 ```
+
+## Safety and Cost Model
+
+Gate0's evaluator uses fixed-size, stack-allocated buffers to guarantee zero heap allocations during evaluation. The default implementation uses `MaybeUninit` to avoid initializing unused slots, resulting in O(used) initialization cost rather than O(capacity).
+
+The unsafe code is confined to a single module (`fixed_stack.rs`) with straightforward invariants: elements 0..len are initialized, elements len..N are not. All unsafe paths are verified with MIRI.
+
+For users who prefer zero unsafe code, Gate0 provides `SafeFixedStack` behind the `safe-stack` feature flag. This variant uses `[T; N]` with `T: Default + Copy` and initializes all slots upfront. The tradeoff is O(capacity) initialization on every evaluation call.
+
+```bash
+cargo build --features safe-stack
+```
+
+Both implementations provide identical semantics and the same zero-allocation guarantee during evaluation. The choice is between performance (O(used)) and absolute safety (O(capacity)). For small stacks with cheap Default types like bool, the difference is negligible.
+
 
 ## Example
 
