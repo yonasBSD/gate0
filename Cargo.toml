@@ -20,7 +20,12 @@ safe-stack = []  # Use SafeFixedStack (no unsafe, O(capacity) init)
 
 [dev-dependencies]
 proptest = "1.6"
+criterion = "0.5"
 
 [lib]
 name = "gate0"
 path = "src/lib.rs"
+
+[[bench]]
+name = "evaluation"
+harness = false

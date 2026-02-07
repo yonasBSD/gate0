@@ -1,7 +1,7 @@
 //! Step-by-step policy evaluation for debugging.
 
 use crate::ast::{EvalRequest, MatchBlock, Policy, PolicyFile};
-use crate::reference_eval::{check_cidr, check_exact, check_fnmatch, check_oidc_groups, check_time_range};
+use crate::reference_eval::{check_cidr, check_exact, check_fnmatch, check_oidc_groups, check_time_range_from_hour};
 
 /// Result of explaining a single condition check.
 #[derive(Debug)]
@@ -105,11 +105,11 @@ fn explain_policy(index: usize, policy: &Policy, request: &EvalRequest) -> Polic
     }
 
     if !m.hours.is_empty() {
-        let matched = check_time_range(&m.hours, request.current_time.as_deref());
+        let matched = check_time_range_from_hour(&m.hours, request.hour_utc);
         filters.push(ConditionExplain {
             field: "hours".to_string(),
             pattern: format!("{:?}", m.hours),
-            request_value: request.current_time.clone().unwrap_or_else(|| "(none)".to_string()),
+            request_value: format!("hour_utc={}", request.hour_utc),
             matched,
         });
     }

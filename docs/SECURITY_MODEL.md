@@ -164,3 +164,25 @@ The following are explicitly not part of Gate0's security model: cryptographic o
 Gate0 is a pure function: (Policy, Request) → Result<Decision, Error>
 
 Everything else is the caller's responsibility.
+
+---
+
+## Security Boundary for Adapters
+
+Gate0 intentionally excludes complex matching operations (regex, CIDR parsing, time range logic, fnmatch patterns) from its core. This keeps the engine small and provably bounded. However, these operations do not disappear; they migrate upstream to adapter or translation layers.
+
+**Any adapter layer (such as GateBridge) is Tier-0 security code.**
+
+Bugs in an adapter are authorization bugs. If an adapter incorrectly canonicalizes an IP address, miscalculates business hours, or applies case sensitivity inconsistently, the policy decision is wrong regardless of Gate0's correctness.
+
+Adopters should apply the same discipline to their adapter as to Gate0 itself:
+
+| Requirement | Rationale |
+|-------------|-----------|
+| No unbounded operations | Avoid regex backtracking, recursive parsing, or unbounded loops |
+| Deterministic output | Identical inputs must produce identical fact sets |
+| Fuzz testing | Exercise edge cases with random and adversarial inputs |
+| Shadow validation | Compare adapter output against a reference implementation |
+| Fail-closed on errors | Parse failures or unexpected input must result in Deny |
+
+GateBridge follows these principles. It uses no regex, no recursive parsing, and has been validated with 1,000,000+ fuzz iterations. Shadow mode enables production validation by comparing decisions against Ephemera's reference evaluator.

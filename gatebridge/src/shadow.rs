@@ -5,6 +5,7 @@
 
 use crate::ast::{EvalRequest, PolicyFile};
 use crate::{reference_evaluate, to_gate0};
+use crate::reference_eval::{check_cidr, check_exact, check_fnmatch, check_oidc_groups, check_time_range_from_hour};
 use gate0::{Request, Value};
 use serde::Serialize;
 
@@ -44,26 +45,61 @@ pub fn shadow_evaluate(
     policy_file: &PolicyFile,
     request: &EvalRequest,
 ) -> Result<ShadowResult, ShadowError> {
+    let mut request = request.clone();
+    request.normalize();
+
     // Run reference evaluator
-    let ref_result = reference_evaluate(policy_file, request);
+    let ref_result = reference_evaluate(policy_file, &request);
 
     // Translate to Gate0 and evaluate
     let gate0_policy = to_gate0(policy_file)
         .map_err(|e| ShadowError::Translation(e.to_string()))?;
 
     // The adapter pattern: we pre-compute complex matching into booleans.
-    // For shadow evaluation, we use the reference result to set context.
-    let trigger_matched = ref_result.matched || !policy_file.policies.is_empty();
-    
-    // Build context with static lifetime strings
-    let context: [(&str, Value); 4] = [
-        ("trigger_matched", Value::Bool(trigger_matched)),
-        ("source_ip_allowed", Value::Bool(true)),
-        ("within_hours", Value::Bool(true)),
-        ("webauthn_verified", Value::Bool(true)),
-    ];
+    // Build binary context with all pre-computed facts for each policy.
+    let mut context: Vec<(&'static str, Value<'static>)> = Vec::new();
 
-    // Build request - use static strings for principal/action/resource
+    // Global "Gold Standard" facts
+    context.push(("is_business_hours", Value::Bool(request.is_business_hours)));
+    context.push(("hour_utc", Value::Int(request.hour_utc as i64)));
+    context.push(("weekday_utc", Value::String(Box::leak(request.weekday_utc.clone().into_boxed_str()))));
+
+    // Per-policy pre-computed facts
+    for (index, policy) in policy_file.policies.iter().enumerate() {
+        let m = &policy.match_block;
+
+        // Triggers (OR)
+        if m.has_triggers() {
+            let matched = check_oidc_groups(&m.oidc_groups, &request.oidc_groups)
+                || check_fnmatch(&m.emails, request.email.as_deref())
+                || check_fnmatch(&m.local_usernames, request.local_username.as_deref());
+            let name = Box::leak(format!("p{}_trigger", index).into_boxed_str());
+            context.push((name, Value::Bool(matched)));
+        }
+
+        // IP filter (AND)
+        if !m.source_ip.is_empty() {
+            let matched = check_cidr(&m.source_ip, request.source_ip.as_deref());
+            let name = Box::leak(format!("p{}_ip", index).into_boxed_str());
+            context.push((name, Value::Bool(matched)));
+        }
+
+        // Time range filter (AND)
+        if !m.hours.is_empty() {
+            let matched = check_time_range_from_hour(&m.hours, request.hour_utc);
+            let name = Box::leak(format!("p{}_time", index).into_boxed_str());
+            context.push((name, Value::Bool(matched)));
+        }
+
+        // WebAuthn filter (AND)
+        if !m.webauthn_ids.is_empty() {
+            let matched = check_exact(&m.webauthn_ids, request.webauthn_id.as_deref());
+            let name = Box::leak(format!("p{}_webauthn", index).into_boxed_str());
+            context.push((name, Value::Bool(matched)));
+        }
+    }
+
+    // Build request
     let gate0_request = Request::with_context(
         "shadow_user",
         "ssh_login",

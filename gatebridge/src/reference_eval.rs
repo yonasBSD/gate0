@@ -48,9 +48,16 @@ fn check_filters(m: &MatchBlock, request: &EvalRequest) -> bool {
         }
     }
 
-    // hours: time range
+    // hours: legacy check (using hour_utc as proxy if current_time is gone)
     if !m.hours.is_empty() {
-        if !check_time_range(&m.hours, request.current_time.as_deref()) {
+        if !check_time_range_from_hour(&m.hours, request.hour_utc) {
+            return false;
+        }
+    }
+
+    // business_hours: explicit precomputed check
+    if let Some(required) = m.is_business_hours {
+        if request.is_business_hours != required {
             return false;
         }
     }
@@ -66,13 +73,15 @@ fn check_filters(m: &MatchBlock, request: &EvalRequest) -> bool {
 }
 
 /// OIDC groups: any group in request matches any in policy.
+/// Assume request_groups are already lowercased.
 pub fn check_oidc_groups(policy_groups: &[String], request_groups: &[String]) -> bool {
     if policy_groups.is_empty() {
         return false;
     }
     for pg in policy_groups {
+        let pg_lower = pg.to_lowercase();
         for rg in request_groups {
-            if pg == rg {
+            if pg_lower == *rg {
                 return true;
             }
         }
@@ -82,6 +91,7 @@ pub fn check_oidc_groups(policy_groups: &[String], request_groups: &[String]) ->
 
 /// fnmatch-style wildcard matching.
 /// Supports * (any sequence) and ? (single char).
+/// Assume value is already lowercased.
 pub fn check_fnmatch(patterns: &[String], value: Option<&str>) -> bool {
     let value = match value {
         Some(v) => v,
@@ -89,7 +99,7 @@ pub fn check_fnmatch(patterns: &[String], value: Option<&str>) -> bool {
     };
 
     for pattern in patterns {
-        if fnmatch(pattern, value) {
+        if fnmatch(&pattern.to_lowercase(), value) {
             return true;
         }
     }
@@ -172,16 +182,15 @@ pub fn check_cidr(cidrs: &[String], ip: Option<&str>) -> bool {
     false
 }
 
-/// Time range check (HH:MM-HH:MM format).
-pub fn check_time_range(ranges: &[String], current: Option<&str>) -> bool {
-    let current = match current {
-        Some(v) => v,
-        None => return false,
-    };
-
+/// Time range check using precomputed hour_utc.
+pub fn check_time_range_from_hour(ranges: &[String], hour_utc: u8) -> bool {
     for range in ranges {
         if let Some((start, end)) = range.split_once('-') {
-            if current >= start && current <= end {
+            // Very simplified: just check the start hour
+            let start_hour: u8 = start.split(':').next().unwrap_or("0").parse().unwrap_or(0);
+            let end_hour: u8 = end.split(':').next().unwrap_or("23").parse().unwrap_or(23);
+            
+            if hour_utc >= start_hour && hour_utc <= end_hour {
                 return true;
             }
         }

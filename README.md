@@ -7,7 +7,7 @@ A small, auditable, terminating, deterministic micro-policy engine.
 
 ## Why Gate0?
 
-I built Gate0 because I was tired of debugging RegEx-based policies in production. I wanted something that was boring, bounded, and impossible to crash. If you want a flexible, general-purpose policy engine, you should use OPA. If you want a policy engine that guarantees sub-50µs execution and zero allocations for security-critical pathways, you want Gate0.
+I built Gate0 because I was tired of debugging RegEx-based policies in production. I wanted something that was boring, bounded, and impossible to crash. If you want a flexible, general-purpose policy engine, you should use OPA. If you want a policy engine that benchmarks at sub-50µs evaluation and zero allocations for security-critical pathways, you want Gate0.
 
 ## Security Model
 

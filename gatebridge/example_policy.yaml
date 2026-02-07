@@ -1,5 +1,7 @@
-# Example Ephemera policy file
+# Example Ephemera policy file (v2)
 # This is the schema GateBridge translates
+
+policy_schema_version: 2
 
 default:
   principals: ["sandbox"]
@@ -10,6 +12,7 @@ policies:
     match:
       oidc_groups: ["infrastructure", "security-team"]
       emails: ["*@admin.example.com"]
+      is_business_hours: true
     principals: ["root", "admin"]
     max_duration: "60m"
 

@@ -71,6 +71,21 @@ GateBridge uses an **adapter pattern** for complex matching:
 
 This keeps Gate0 pure (no fnmatch/CIDR in core) while validating semantic equivalence.
 
+## Security
+
+> [!IMPORTANT]
+> **GateBridge is Tier-0 security code.** Bugs in GateBridge are authorization bugs.
+
+Because Gate0 pushes complex matching (fnmatch, CIDR, time ranges) upstream, GateBridge inherits Gate0's security responsibilities. The adapter is subject to the same boundedness, determinism, and testing discipline as Gate0 itself.
+
+GateBridge enforces this by:
+- Using no regex or unbounded parsing
+- Producing deterministic fact sets for identical inputs
+- Fuzz testing with 1,000,000+ iterations
+- Providing shadow mode for production validation
+
+See [SECURITY_MODEL.md](../docs/SECURITY_MODEL.md#security-boundary-for-adapters) for the full security boundary specification.
+
 ## License
 
 MIT

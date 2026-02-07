@@ -1,7 +1,7 @@
 # GateBridge Policy Semantics
 
-**Version:** 0.1 (unstable)  
-**Status:** Phase 1 — Shadow Evaluation Only
+**Version:** 0.2 (Bridge Canonical Context v2)  
+**Status:** Hardened Validation
 
 This document defines the semantics of Ephemera's YAML policy language as interpreted by GateBridge. The reference evaluator and Gate0 translation must both conform to this specification.
 
@@ -97,6 +97,7 @@ If an OR trigger matched (or no triggers were specified), all specified AND filt
 |-------|------------|----------|
 | `source_ip` | Simplified CIDR | See CIDR Matching below |
 | `hours` | Time range | See Time Range Matching below |
+| `is_business_hours` | Boolean | Exact match against precomputed fact |
 | `webauthn_ids` | Exact match | Request value in list |
 
 If **any AND filter fails**, the policy is skipped.
@@ -122,10 +123,13 @@ Used for `emails` and `local_usernames`.
 - `admin*` matches `administrator`
 - `user?` matches `user1` but not `user12`
 
+**Case Normalization:**
+Evaluation is **case-insensitive**. The Bridge canonicalizes all identity fields to lowercase before evaluation, and GateBridge lowercases all policy patterns before matching.
+
 **Edge cases:**
 - If request value is `null`/missing → no match
 - Empty pattern list → no match
-- Matching is case-sensitive
+- Matching is performed against lowercase canonical forms
 
 ### CIDR Matching (Simplified)
 
@@ -196,16 +200,21 @@ Each Ephemera policy maps to a Gate0 rule with `ReasonCode` = policy index:
 
 When Gate0 returns `Allow + ReasonCode(i)`, the caller looks up `policies[i]` to retrieve principals and max_duration.
 
-### Adapter Pattern
+### Adapter Pattern (Gold Standard Context)
 
-Gate0 does not implement fnmatch, CIDR, or time matching natively. Complex matching is **pre-computed by the adapter** into boolean context attributes:
+Gate0 does not implement fnmatch, CIDR, or time matching natively. Complex matching is **pre-computed by the adapter** into boolean context attributes.
 
-| Attribute | Meaning |
-|-----------|---------|
-| `trigger_matched` | At least one OR trigger matched |
-| `source_ip_allowed` | CIDR check passed |
-| `within_hours` | Time range check passed |
-| `webauthn_verified` | WebAuthn ID matched |
+Gate0 receives a "Gold Standard" context from the Bridge:
+
+| Attribute | Type | Meaning |
+|-----------|------|---------|
+| `is_business_hours` | Bool | Whether request time is within organizational windows |
+| `hour_utc` | Int | Current hour (0-23) |
+| `weekday_utc` | String| Canonical day name ("monday", etc.) |
+| `p{i}_trigger` | Bool | Whether policy `i` OR triggers matched |
+| `p{i}_ip` | Bool | Whether policy `i` CIDR check passed |
+| `p{i}_time` | Bool | Whether policy `i` time range check passed |
+| `p{i}_webauthn` | Bool | Whether policy `i` WebAuthn ID matched |
 
 Gate0 evaluates these booleans. This keeps Gate0 pure and bounded.
 

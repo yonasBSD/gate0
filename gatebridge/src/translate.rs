@@ -91,6 +91,12 @@ fn build_condition(index: usize, m: &MatchBlock) -> Result<Option<Condition<'sta
             value: Value::Bool(true),
         });
     }
+    if let Some(required) = m.is_business_hours {
+        conditions.push(Condition::Equals {
+            attr: "is_business_hours",
+            value: Value::Bool(required),
+        });
+    }
     if !m.webauthn_ids.is_empty() {
         let attr = format!("p{}_webauthn", index);
         conditions.push(Condition::Equals {
